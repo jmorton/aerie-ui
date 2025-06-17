@@ -2,11 +2,10 @@ import { base } from '$app/paths';
 import { env } from '$env/dynamic/public';
 import type { Handle } from '@sveltejs/kit';
 import { parse, type CookieSerializeOptions } from 'cookie';
-import { jwtDecode } from 'jwt-decode';
-import type { BaseUser, ParsedUserToken, User } from './types/app';
+import type { BaseUser, User } from './types/app';
 import type { ReqValidateSSOResponse } from './types/auth';
-import effects from './utilities/effects';
 import { reqGatewayForwardCookies } from './utilities/requests';
+import { computeRolesFromCookies, computeRolesFromJWT } from './utilities/auth';
 
 export const handle: Handle = async ({ event, resolve }) => {
   try {
@@ -52,6 +51,30 @@ const handleJWTAuth: Handle = async ({ event, resolve }) => {
 };
 
 const handleSSOAuth: Handle = async ({ event, resolve }) => {
+  // if an identity provider is specified use the Authorization Code Flow
+  if (env.PUBLIC_IDENTITY_PROVIDER_URL) {
+    const cookieHeader = event.request.headers.get('cookie') ?? '';
+    const cookies = parse(cookieHeader);
+    const { activeRole: activeRoleCookie = null, user: userCookie } = cookies;
+
+    if (userCookie) {
+      const user = await computeRolesFromCookies(userCookie, activeRoleCookie);
+      if (user) {
+        event.locals.user = user;
+        return await resolve(event);
+      }
+    }
+
+    if (event.url.pathname.startsWith('/auth/callback')) {
+      return await resolve(event);
+    }
+
+    return new Response(null, {
+      headers: { location: `${base}/auth/authorize` },
+      status: 307,
+    });
+  }
+
   const cookieHeader = event.request.headers.get('cookie') ?? '';
   const cookies = parse(cookieHeader);
   const { activeRole: activeRoleCookie = null } = cookies;
@@ -108,45 +131,3 @@ const handleSSOAuth: Handle = async ({ event, resolve }) => {
   return await resolve(event);
 };
 
-async function computeRolesFromCookies(
-  userCookie: string | null,
-  activeRoleCookie: string | null,
-): Promise<User | null> {
-  const userBuffer = Buffer.from(userCookie ?? '', 'base64');
-  const userStr = userBuffer.toString('utf-8');
-
-  try {
-    const baseUser: BaseUser = JSON.parse(userStr);
-    return computeRolesFromJWT(baseUser, activeRoleCookie);
-  } catch {
-    return null;
-  }
-}
-
-async function computeRolesFromJWT(baseUser: BaseUser, activeRole: string | null): Promise<User | null> {
-  const { success } = await effects.session(baseUser);
-  if (!success) {
-    return null;
-  }
-
-  const decodedToken: ParsedUserToken = jwtDecode(baseUser.token);
-
-  const allowedRoles = decodedToken['https://hasura.io/jwt/claims']['x-hasura-allowed-roles'];
-  const defaultRole = decodedToken['https://hasura.io/jwt/claims']['x-hasura-default-role'];
-
-  const user: User = {
-    ...baseUser,
-    activeRole: activeRole ?? defaultRole,
-    allowedRoles,
-    defaultRole,
-    permissibleQueries: null,
-    rolePermissions: null,
-  };
-  const permissibleQueries = await effects.getUserQueries(user);
-  const rolePermissions = await effects.getRolePermissions(user);
-  return {
-    ...user,
-    permissibleQueries,
-    rolePermissions,
-  };
-}
