@@ -14,3 +14,5 @@ This document provides detailed information about environment variables for Aeri
 | `PUBLIC_HASURA_SERVER_URL`       | Url of Hasura as called from the server (i.e. Node.js container)                                              | `string` | http://localhost:8080/v1/graphql |
 | `PUBLIC_HASURA_WEB_SOCKET_URL`   | Url of Hasura called to establish a web-socket connection from the client                                     | `string` | ws://localhost:8080/v1/graphql   |
 | `PUBLIC_TIME_PLUGIN_ENABLED`     | Whether the client should load a user-supplied `time-plugin.js` plugin from the `static/resources` directory. | `string` | false                            |
+| `PUBLIC_IDENTITY_PROVIDER_URL`   | Base URL of the OpenID Connect identity provider used for PKCE authentication. | `string` | http://localhost:7777           |
+| `PUBLIC_OIDC_CLIENT_ID`          | Client identifier registered with the identity provider. | `string` | aerie-ui                        |
