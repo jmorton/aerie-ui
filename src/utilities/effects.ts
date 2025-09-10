@@ -5384,7 +5384,10 @@ const effects = {
     workspace: Workspace,
     workspaceContents: WorkspaceTreeNode,
     startingPath: string,
+    inputLanguageName: string,
+    outputLanguageExtensions: string[],
     user: User | null,
+    toInputFormat: (input: string) => Promise<string>,
   ): Promise<string | null> {
     try {
       if (!featurePermissions.workspace.canUpdate(user, workspace)) {
@@ -5393,14 +5396,96 @@ const effects = {
       const { confirm, value } = await showImportWorkspaceFileModal(
         workspace,
         workspaceContents,
+        inputLanguageName,
+        outputLanguageExtensions,
         startingPath,
         workspace,
         user,
       );
       if (confirm) {
-        const { files, targetDirectory } = value;
+        const { convertedFileExtension, filesToConvert, filesToUpload, shouldKeepOriginalFiles, targetDirectory } =
+          value as {
+            convertedFileExtension: string;
+            filesToConvert: File[];
+            filesToUpload: File[];
+            shouldKeepOriginalFiles: boolean;
+            targetDirectory: string;
+          };
+
+        const convertedFileMap: Record<string, string> = {};
+
+        const convertedFiles: File[] = await Promise.all(
+          filesToConvert.map(async file => {
+            const matchingOutputLanguageExtension = outputLanguageExtensions.find(fileExtension =>
+              file.name.endsWith(`.${fileExtension.replace(/^\./, '')}`),
+            );
+
+            if (matchingOutputLanguageExtension) {
+              const fileName = file.name.replace(
+                matchingOutputLanguageExtension.replace(/^\./, ''),
+                convertedFileExtension.replace(/^\./, ''),
+              );
+              const lastModified = Date.now();
+              const content = await file.text();
+              const convertedContent = await toInputFormat(content);
+
+              convertedFileMap[file.name] = fileName;
+              return new File([convertedContent], fileName, { lastModified, type: 'text/plain' });
+            }
+
+            return file;
+          }),
+        );
+
         const cleanedTargetPath = cleanPath(targetDirectory);
-        const chunkedFiles = chunk(Array.from<File>(files), 10);
+        const convertedChunkedFiles = chunk(convertedFiles, 10);
+
+        const failedConvertedFileUploads: Record<string, boolean> = {};
+
+        const successfullyUploadedFileNames: string[] = [];
+
+        for (let i = 0; i < convertedChunkedFiles.length; i++) {
+          const fileChunk: File[] = convertedChunkedFiles[i];
+
+          await Promise.all(
+            fileChunk.map(async file => {
+              const body = new FormData();
+              body.append('file', file, file.name);
+              try {
+                await reqWorkspace<Workspace>(
+                  `${joinPath([workspace.id, cleanedTargetPath, file.name])}?type=file`,
+                  'PUT',
+                  body,
+                  user,
+                  undefined,
+                  false,
+                );
+                successfullyUploadedFileNames.push(file.name);
+              } catch (error) {
+                failedConvertedFileUploads[file.name] = true;
+                catchError(`${file.name} was unable to be uploaded`, error as Error);
+                showFailureToast(`${file.name} was unable to be uploaded`);
+              }
+            }),
+          );
+        }
+
+        let fileArray: File[] = [];
+        if (shouldKeepOriginalFiles) {
+          fileArray = [
+            ...filesToConvert.reduce((previousFilesToConvert: File[], currentFile: File) => {
+              if (failedConvertedFileUploads[convertedFileMap[currentFile.name]]) {
+                return previousFilesToConvert;
+              }
+              return [...previousFilesToConvert, currentFile];
+            }, []),
+            ...filesToUpload,
+          ];
+        } else {
+          fileArray = [...filesToUpload];
+        }
+
+        const chunkedFiles = chunk(fileArray, 10);
 
         for (let i = 0; i < chunkedFiles.length; i++) {
           const fileChunk: File[] = chunkedFiles[i];
@@ -5416,16 +5501,23 @@ const effects = {
                 undefined,
                 false,
               );
+              successfullyUploadedFileNames.push(file.name);
             }),
           );
         }
 
-        showSuccessToast(`Workspace File${files.length > 1 ? 's' : ''} Uploaded Successfully`);
-        return joinPath([cleanedTargetPath, files[0].name]);
+        if (successfullyUploadedFileNames.length > 0) {
+          showSuccessToast(
+            `Workspace File${successfullyUploadedFileNames.length > 1 ? 's' : ''} Uploaded Successfully`,
+          );
+        } else {
+          throw new Error('No files were uploaded');
+        }
+        return joinPath([cleanedTargetPath, successfullyUploadedFileNames[0]]);
       }
     } catch (e) {
       catchError(`Workspace file was unable to be uploaded`, e as Error);
-      showFailureToast(`Workspace File Upload Failed`);
+      showFailureToast(`Workspace file was unable to be uploaded`);
     }
 
     return null;

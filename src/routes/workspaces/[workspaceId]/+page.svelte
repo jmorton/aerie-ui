@@ -60,6 +60,7 @@
   import { showConfirmModal } from '../../../utilities/modal';
   import { featurePermissions } from '../../../utilities/permissions';
   import { getActionsUrl, getWorkspacesUrl } from '../../../utilities/routes';
+  import { toInputFormat } from '../../../utilities/sequence-editor/extension-points';
   import { userSequenceToLibrarySequence } from '../../../utilities/sequence-editor/languages/seq-n/seq-n-tree-utils';
   import { parseFunctionSignatures } from '../../../utilities/sequence-editor/languages/vml/vml-adaptation';
   import { isVmlSequence } from '../../../utilities/sequence-editor/sequence-utils';
@@ -333,7 +334,15 @@
   async function onImportFile(event: CustomEvent<string>) {
     if ($workspace != null && workspaceTree && user) {
       const { detail: startingPath } = event;
-      const targetPath = await effects.importWorkspaceFile($workspace, workspaceTree, startingPath, user);
+      const targetPath = await effects.importWorkspaceFile(
+        $workspace,
+        workspaceTree,
+        startingPath,
+        $sequenceAdaptation.inputFormat.name,
+        $sequenceAdaptation.outputFormat.map(outputFormat => outputFormat.fileExtension),
+        user,
+        async (input: string) => toInputFormat(input, parameterDictionaries, channelDictionary, $sequenceAdaptation),
+      );
       refreshWorkspaceContents();
 
       if (targetPath) {
@@ -478,6 +487,10 @@
 
   onDestroy(() => {
     resetSequenceAdaptation();
+
+    if (refreshInterval !== null) {
+      clearInterval(refreshInterval);
+    }
   });
 </script>
 

@@ -314,6 +314,8 @@ export async function showDeleteExternalEventSourceTypeModal(
 export async function showImportWorkspaceFileModal(
   currentWorkspace: Workspace,
   currentWorkspaceContents: WorkspaceTreeNode,
+  inputLanguageName: string,
+  outputLanguageExtensions: string[],
   startingPath: string,
   workspace: Workspace | null | undefined,
   user: User | null,
@@ -327,6 +329,8 @@ export async function showImportWorkspaceFileModal(
           props: {
             currentWorkspace,
             currentWorkspaceContents,
+            inputLanguageName,
+            outputLanguageExtensions,
             startingPath,
             user,
             workspace,
@@ -335,12 +339,23 @@ export async function showImportWorkspaceFileModal(
         });
         target.resolve = resolve;
 
-        importWorkspaceFileModal.$on('confirm', (e: CustomEvent<{ files: FileList; targetDirectory: string }>) => {
-          target.replaceChildren();
-          target.resolve = null;
-          resolve({ confirm: true, value: e.detail });
-          importWorkspaceFileModal.$destroy();
-        });
+        importWorkspaceFileModal.$on(
+          'confirm',
+          (
+            e: CustomEvent<{
+              convertedFileExtension: string;
+              filesToConvert: File[];
+              filesToUpload: File[];
+              shouldKeepOriginalFiles: boolean;
+              targetDirectory: string;
+            }>,
+          ) => {
+            target.replaceChildren();
+            target.resolve = null;
+            resolve({ confirm: true, value: e.detail });
+            importWorkspaceFileModal.$destroy();
+          },
+        );
 
         importWorkspaceFileModal.$on('close', () => {
           target.replaceChildren();
