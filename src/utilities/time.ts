@@ -4,8 +4,9 @@ import { InvalidDate } from '../constants/time';
 import { TimeTypes } from '../enums/time';
 import type { ActivityDirectiveId, ActivityDirectivesMap } from '../types/activity';
 import type { PluginTime } from '../types/plugin';
-import type { SpanUtilityMaps, SpansMap } from '../types/simulation';
+import type { SpansMap, SpanUtilityMaps } from '../types/simulation';
 import type { DurationTimeComponents, ParsedDoyString, ParsedDurationString, ParsedYmdString } from '../types/time';
+import { padNumber } from './text';
 
 const ABSOLUTE_TIME = /^(\d{4})-(\d{3})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{3}))?$/;
 const RELATIVE_TIME =
@@ -560,7 +561,7 @@ export function getActivityDirectiveStartTimeMs(
   spanUtilityMaps: SpanUtilityMaps,
   cachedStartTimes: { [activityDirectiveId: ActivityDirectiveId]: number } = {},
   traversalMap: { [activityDirectiveId: ActivityDirectiveId]: boolean } = {},
-): number | never {
+): number {
   // If the start time has already been determined in an earlier iteration
   if (cachedStartTimes[id]) {
     return cachedStartTimes[id];
@@ -944,4 +945,28 @@ export function formatMS(ms: number | null): string {
     return `${convertUsToDurationString(ms * 1000).split(' ')[0]}`;
   }
   return '–';
+}
+
+/**
+ * Converts microseconds to a string of the form "HH:mm:ss.SSSSSS".
+ * Example: 5025678901 => "01:23:45.678901"
+ * Rounds to nearest microsecond if not an integer
+ * Returns "INVALID" for non-finite numbers
+ */
+export function usToOffset(us: number): string {
+  if (!isFinite(us)) {
+    return 'INVALID';
+  }
+  const isNegative = us < 0;
+  us = Math.round(Math.abs(us));
+
+  const hours = Math.floor(us / 3_600_000_000);
+  us %= 3_600_000_000;
+  const minutes = Math.floor(us / 60_000_000);
+  us %= 60_000_000;
+  const seconds = Math.floor(us / 1_000_000);
+  us %= 1_000_000;
+
+  const result = `${padNumber(hours, 2)}:${padNumber(minutes, 2)}:${padNumber(seconds, 2)}.${padNumber(us, 6)}`;
+  return isNegative ? `-${result}` : result;
 }

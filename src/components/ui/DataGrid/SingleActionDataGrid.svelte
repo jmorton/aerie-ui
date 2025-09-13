@@ -206,6 +206,9 @@
         </ContextMenu.Item>
       </div>
     {/if}
+
+    <slot name="context-menu-bottom" />
+
     <ContextMenu.Separator />
   </svelte:fragment>
 </DataGrid>
