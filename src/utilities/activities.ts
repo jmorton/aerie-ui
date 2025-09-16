@@ -283,6 +283,31 @@ export async function getActivityDirectivesToPaste(
   return activities;
 }
 
+export function bulkShiftActivityDirectivesInPlan(
+  activities: ActivityDirective[],
+  direction: 'LEFT' | 'RIGHT',
+  offsetUS: number,
+): ActivityDirective[] {
+  const selectedIds = new Set(activities.map(a => a.id));
+
+  return activities.map(activity => {
+    const shouldUpdate = activity.anchor_id === null || !selectedIds.has(activity.anchor_id);
+
+    if (!shouldUpdate) {
+      return activity;
+    }
+
+    const newOffset = usToOffset(
+      getIntervalInMs(activity.start_offset) * 1000 + (direction === 'RIGHT' ? offsetUS : -offsetUS),
+    );
+
+    return {
+      ...activity,
+      start_offset: newOffset,
+    };
+  });
+}
+
 export function addAbsoluteTimeToRevision(
   activityDirectiveRevision: ActivityDirectiveRevision,
   activityId: number,

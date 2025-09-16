@@ -1,10 +1,11 @@
 import { keyBy, reverse } from 'lodash-es';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import type { ActivityDirective, ActivityDirectiveDB } from '../types/activity';
 import type { Plan } from '../types/plan';
 import type { Span, SpanUtilityMaps, SpansMap } from '../types/simulation';
 import {
   addAbsoluteTimeToRevision,
+  bulkShiftActivityDirectivesInPlan,
   computeActivityDirectivesMap,
   createSpanUtilityMaps,
   getActivityMetadata,
@@ -415,11 +416,11 @@ describe('addAbsoluteTimeToRevision', () => {
     anchored_to_start: true,
     applied_preset: null,
     arguments: {},
-    created_at: '2006-07-11T00:00:00',
+    created_at: '2030-01-01T00:00:00',
     created_by: 'admin',
     id: 1,
-    last_modified_arguments_at: '2006-07-11T00:00:00',
-    last_modified_at: '2006-07-11T00:00:00',
+    last_modified_arguments_at: '2030-01-01T00:00:00',
+    last_modified_at: '2030-01-01T00:00:00',
     last_modified_by: 'admin',
     metadata: {},
     name: 'foo 1',
@@ -434,7 +435,7 @@ describe('addAbsoluteTimeToRevision', () => {
     anchor_id: null,
     anchored_to_start: true,
     arguments: {},
-    changed_at: '2006-07-11T21:53:22',
+    changed_at: '2030-07-03T21:53:22',
     changed_by: 'admin',
     metadata: {},
     name: 'foo 1',
@@ -676,5 +677,41 @@ describe('packActivityDirectivesInPlan', () => {
       expect(rightPacked[1].start_offset).toEqual('16:00:00.000000');
       expect(rightPacked[2].start_offset).toEqual('15:00:00.000000');
     }
+  });
+});
+
+vi.mock('./effects', () => ({
+  default: {
+    updateActivityDirective: vi.fn(),
+  },
+}));
+vi.mock('./toast', () => ({
+  showFailureToast: vi.fn(),
+  showSuccessToast: vi.fn(),
+}));
+
+describe('bulkShiftActivityDirectivesInPlan', () => {
+  const shiftedLeft = bulkShiftActivityDirectivesInPlan(
+    activityDirectives,
+    'LEFT',
+    7200000000, //2 hours
+  );
+
+  test('Shifted Activities to the Left by 2 hours', () => {
+    expect(shiftedLeft[0].start_offset === '08:00:00');
+    expect(shiftedLeft[1].start_offset === '09:00:00'); //Was anchored to activity with id=1 so shift happens automatically
+    expect(shiftedLeft[2].start_offset === '06:00:00');
+  });
+
+  const shiftedRight = bulkShiftActivityDirectivesInPlan(
+    activityDirectives,
+    'RIGHT',
+    7200000000, //2 hours
+  );
+
+  test('Shifted Activities to the Right by 2 hours', () => {
+    expect(shiftedRight[0].start_offset === '12:00:00');
+    expect(shiftedRight[1].start_offset === '09:00:00'); //Was anchored to activity with id=1 so shift happens automatically
+    expect(shiftedRight[2].start_offset === '10:00:00');
   });
 });

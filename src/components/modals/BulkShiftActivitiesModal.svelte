@@ -3,19 +3,22 @@
   import { getTarget } from '../../utilities/generic';
   import { convertDurationStringToInterval } from '../../utilities/time';
   import { tooltip } from '../../utilities/tooltip';
-  import Modal from './Modal.svelte';
-  import ModalContent from './ModalContent.svelte';
-  import ModalFooter from './ModalFooter.svelte';
-  import ModalHeader from './ModalHeader.svelte';
+  import Modal from '../modals/Modal.svelte';
+  import ModalContent from '../modals/ModalContent.svelte';
+  import ModalFooter from '../modals/ModalFooter.svelte';
+  import ModalHeader from '../modals/ModalHeader.svelte';
 
   const dispatch = createEventDispatcher<{
     close: void;
-    confirm: { direction: 'Left' | 'Right'; offsetStr: string };
+    confirm: {
+      direction: 'Left' | 'Right';
+      shiftOffsetStr: string;
+    };
   }>();
 
   let direction: 'Left' | 'Right' = 'Left';
-  let gapOffsetString: string = '0d 0h 0m 0s 0ms 0us';
-  let gapOffsetError: string | null = '';
+  let shiftDurationString: string = '0d 0h 0m 0s 0ms 0us';
+  let shiftOffsetError: string | null = '';
   let disabled: boolean = false;
 
   function setDirection(dir: 'Left' | 'Right') {
@@ -23,23 +26,24 @@
   }
 
   function confirm() {
-    dispatch('confirm', { direction, offsetStr: gapOffsetString });
+    dispatch('confirm', { direction, shiftOffsetStr: shiftDurationString });
   }
 
   function onUpdateStartOffset(event: Event) {
     const { value } = getTarget(event);
     try {
       convertDurationStringToInterval(`${value}`);
-      gapOffsetError = `${value}`.includes('-') ? 'Negative offsets are not allowed' : '';
+      shiftOffsetError = `${value}`.includes('-') ? 'Negative offsets are not allowed' : '';
     } catch (error: any) {
-      gapOffsetError = error.message;
+      shiftOffsetError = error.message;
     }
   }
 </script>
 
 <div class="compact-modal">
   <Modal height={150} width={300}>
-    <ModalHeader on:close>Pack Directive(s)</ModalHeader>
+    <ModalHeader on:close>Shift Directive(s)</ModalHeader>
+
     <ModalContent>
       <div class="form-container">
         <div class="row">
@@ -57,19 +61,19 @@
         <div class="row">
           <label
             class="label"
-            use:tooltip={{ content: 'The gap between directives when packed ', placement: 'top' }}
+            use:tooltip={{ content: 'The duration of how much the activities should be shifted by', placement: 'top' }}
             for="gap-offset"
           >
-            Offset:
+            Shift By:
           </label>
           <input
             class="st-input shift-input"
-            class:error={!!gapOffsetError}
+            class:error={!!shiftOffsetError}
             {disabled}
             name="gap-offset"
-            bind:value={gapOffsetString}
+            bind:value={shiftDurationString}
             on:change={onUpdateStartOffset}
-            use:tooltip={{ content: gapOffsetError, placement: 'top' }}
+            use:tooltip={{ content: shiftOffsetError, placement: 'top' }}
           />
         </div>
       </div>
@@ -77,7 +81,7 @@
 
     <ModalFooter>
       <button class="st-button secondary" on:click={() => dispatch('close')}>Cancel</button>
-      <button class="st-button" on:click={confirm} disabled={!!gapOffsetError}>Pack</button>
+      <button class="st-button" on:click={confirm} disabled={!!shiftOffsetError}>Shift</button>
     </ModalFooter>
   </Modal>
 </div>
