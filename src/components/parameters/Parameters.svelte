@@ -106,9 +106,11 @@
   .right-actions {
     display: flex;
     gap: 2px;
+    margin-top: 0.25rem;
     transition: visibility 0.1s;
     visibility: hidden;
   }
+
   .parameters-container :global(> div.highlight:hover .right-actions) {
     visibility: visible;
   }
