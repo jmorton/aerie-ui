@@ -203,11 +203,8 @@ fieldset {
 }
 
 .permission-disabled * {
-  pointer-events: none;
-}
-
-.permission-disabled * {
   opacity: 1 !important;
+  pointer-events: none;
 }
 
 .st-button.permission-disabled {
