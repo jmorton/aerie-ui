@@ -143,8 +143,6 @@ test.describe.serial('Plan', () => {
   });
 
   test(`Changing to a new plan should clear the selected activity`, async ({ baseURL }) => {
-    await plan.showPanel(PanelNames.TIMELINE_ITEMS);
-
     // Create an activity which will be auto selected
     await plan.addActivity('GrowBanana');
 
@@ -156,7 +154,7 @@ test.describe.serial('Plan', () => {
     await page.waitForTimeout(1000);
     // TODO would ideally do this without a timeout
 
-    // Re-select the activity
+    // Add a new activity
     await plan.addActivity('GrowBanana');
 
     const branchPlanUrlRegex = new RegExp(`${baseURL}/plans/(?<planId>\\d+)`);
