@@ -1,7 +1,6 @@
 import { browser } from '$app/environment';
 import AboutModal from '../components/modals/AboutModal.svelte';
 import ActionCreationModal from '../components/modals/ActionCreationModal.svelte';
-import BulkShiftActivitiesModal from '../components/modals/BulkShiftActivitiesModal.svelte';
 import CancelActionRunModal from '../components/modals/CancelActionRunModal.svelte';
 import ConfirmActivityCreationModal from '../components/modals/ConfirmActivityCreationModal.svelte';
 import ConfirmModal from '../components/modals/ConfirmModal.svelte';
@@ -27,7 +26,6 @@ import MoveWorkspaceItemModal from '../components/modals/MoveWorkspaceItemModal.
 import NewSequenceModal from '../components/modals/NewSequenceModal.svelte';
 import NewWorkspaceFolderModal from '../components/modals/NewWorkspaceFolderModal.svelte';
 import NewWorkspaceSequenceModal from '../components/modals/NewWorkspaceSequenceModal.svelte';
-import PackActivitiesOffsetModal from '../components/modals/PackActivitiesOffsetModal.svelte';
 import PlanBranchesModal from '../components/modals/PlanBranchesModal.svelte';
 import PlanBranchRequestModal from '../components/modals/PlanBranchRequestModal.svelte';
 import PlanMergeRequestsModal from '../components/modals/PlanMergeRequestsModal.svelte';
@@ -37,6 +35,7 @@ import RunActionModal from '../components/modals/RunActionModal.svelte';
 import RunActionResultsModal from '../components/modals/RunActionResultsModal.svelte';
 import SavedViewsModal from '../components/modals/SavedViewsModal.svelte';
 import TimeRangeModal from '../components/modals/TimeRangeModal.svelte';
+import TransformActivitiesModal from '../components/modals/TransformActivitiesModal.svelte';
 import UpdatePlanMissionModelModal from '../components/modals/UpdatePlanMissionModelModal.svelte';
 import UploadViewModal from '../components/modals/UploadViewModal.svelte';
 import NewSequenceTemplateModal from '../components/sequence-templates/NewSequenceTemplateModal.svelte';
@@ -58,6 +57,7 @@ import type {
 import type { PlanSnapshot } from '../types/plan-snapshot';
 import type { UserSequence } from '../types/sequencing';
 import type { Tag } from '../types/tags';
+import type { ActivityTransformDirection } from '../types/time';
 import type { ViewDefinition } from '../types/view';
 import type { Workspace } from '../types/workspace';
 import type { WorkspaceTreeNode } from '../types/workspace-tree-view';
@@ -1129,28 +1129,35 @@ export async function showExpansionSequenceModal(
 }
 
 export async function showPackActivitiesModal(): Promise<
-  ModalElementValue<{ direction: 'LEFT' | 'RIGHT'; offsetStr: string }>
+  ModalElementValue<{ direction: ActivityTransformDirection; offsetDuration: string }>
 > {
   return new Promise(resolve => {
     if (browser) {
       const target: ModalElement | null = document.querySelector('#svelte-modal');
 
       if (target) {
-        const packModal = new PackActivitiesOffsetModal({ props: {}, target });
+        const transformModal = new TransformActivitiesModal({
+          props: {
+            offsetLabel: 'Offset',
+            subtitle: 'Pack activity directives to the left or the right with a time offset.',
+            title: 'Pack Directives',
+          },
+          target,
+        });
         target.resolve = resolve;
 
-        packModal.$on('close', () => {
+        transformModal.$on('close', () => {
           target.replaceChildren();
           target.resolve = null;
           resolve({ confirm: false });
-          packModal.$destroy();
+          transformModal.$destroy();
         });
 
-        packModal.$on('confirm', e => {
+        transformModal.$on('confirm', e => {
           target.replaceChildren();
           target.resolve = null;
           resolve({ confirm: true, value: e.detail });
-          packModal.$destroy();
+          transformModal.$destroy();
         });
       }
     } else {
@@ -1420,28 +1427,35 @@ export async function showSavedViewsModal(
  * Shows a BulkShiftActivitiesModal component.
  */
 export async function showBulkShiftActivitiesModal(): Promise<
-  ModalElementValue<{ direction: 'LEFT' | 'RIGHT'; shiftOffsetStr: string }>
+  ModalElementValue<{ direction: ActivityTransformDirection; offsetDuration: string }>
 > {
   return new Promise(resolve => {
     if (browser) {
       const target: ModalElement | null = document.querySelector('#svelte-modal');
 
       if (target) {
-        const shiftModal = new BulkShiftActivitiesModal({ props: {}, target });
+        const transformModal = new TransformActivitiesModal({
+          props: {
+            offsetLabel: 'Shift by',
+            subtitle: 'Shift activity directives forwards or backwards in time.',
+            title: 'Shift Directives',
+          },
+          target,
+        });
         target.resolve = resolve;
 
-        shiftModal.$on('close', () => {
+        transformModal.$on('close', () => {
           target.replaceChildren();
           target.resolve = null;
           resolve({ confirm: false });
-          shiftModal.$destroy();
+          transformModal.$destroy();
         });
 
-        shiftModal.$on('confirm', e => {
+        transformModal.$on('confirm', e => {
           target.replaceChildren();
           target.resolve = null;
           resolve({ confirm: true, value: e.detail });
-          shiftModal.$destroy();
+          transformModal.$destroy();
         });
       }
     } else {
