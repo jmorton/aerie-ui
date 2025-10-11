@@ -110,7 +110,7 @@ export class Plan {
   async addActivity(name: string = 'GrowBanana') {
     await this.showPanel(PanelNames.TIMELINE_ITEMS);
     // TODO try to avoid using this timeout
-    await this.page.waitForTimeout(150);
+    await this.page.waitForTimeout(350);
     const currentNumOfActivitiesWithName = await this.panelActivityDirectivesTable.getByRole('row', { name }).count();
     const activityListItem = this.page.locator(`.list-item :text-is("${name}")`);
     const activityRow = this.page
@@ -546,7 +546,7 @@ export class Plan {
     this.constraintManageButton = page.locator(`button[name="manage-constraints"]`);
     this.constraintModalFilter = page.locator('.modal').getByPlaceholder('Filter constraints');
     this.constraintNewButton = page.locator(`button[name="new-constraint"]`);
-    this.consoleContainer = page.getByTestId('console').filter({ hasText: 'All Errors' });
+    this.consoleContainer = page.getByTestId('console');
     this.externalSourceManageButton = page.getByLabel('Select derivation groups to');
     this.gridMenuButton = page.getByLabel('Plan Menu', { exact: true });
     this.gridMenu = page.getByRole('menu', { exact: true, name: 'Plan Menu' });

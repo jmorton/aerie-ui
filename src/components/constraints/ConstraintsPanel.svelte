@@ -120,7 +120,6 @@
                 ),
               })) ?? null,
           },
-          success: constraintResponse.success,
           type: constraintResponse.type,
         };
       }

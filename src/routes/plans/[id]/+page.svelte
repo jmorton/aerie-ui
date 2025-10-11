@@ -5,8 +5,16 @@
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { page } from '$app/stores';
-  import { Button, Resizable } from '@nasa-jpl/stellar-svelte';
-  import { CalendarRange, ChevronsLeftRight, FlipHorizontal2, ListX, PlaySquareIcon } from 'lucide-svelte';
+  import { Button, Resizable, Select } from '@nasa-jpl/stellar-svelte';
+  import { capitalize } from 'lodash-es';
+  import {
+    AlertTriangle,
+    CalendarRange,
+    ChevronsLeftRight,
+    FlipHorizontal2,
+    ListX,
+    PlaySquareIcon,
+  } from 'lucide-svelte';
   import type { PaneAPI } from 'paneforge';
   import { onDestroy } from 'svelte';
   import Nav from '../../../components/app/Nav.svelte';
@@ -14,8 +22,7 @@
   import Console from '../../../components/console/Console.svelte';
   import ConsoleTab from '../../../components/console/ConsoleTab.svelte';
   import ConsoleActivityErrors from '../../../components/console/views/ActivityErrors.svelte';
-  import ConsoleGenericErrors from '../../../components/console/views/GenericErrors.svelte';
-  import ConsoleModelErrors from '../../../components/console/views/ModelErrors.svelte';
+  import ConsoleLogs from '../../../components/console/views/ConsoleLogs.svelte';
   import ActivityStatusMenu from '../../../components/menus/ActivityStatusMenu.svelte';
   import ExtensionMenu from '../../../components/menus/ExtensionMenu.svelte';
   import PlanMenu from '../../../components/menus/PlanMenu.svelte';
@@ -51,10 +58,14 @@
   } from '../../../stores/constraints';
   import {
     activityErrorRollups,
-    allErrors,
-    anchorValidationErrors,
-    clearAllErrors,
+    allLogs,
+    allProblems,
+    clearLogs,
     clearSchedulingErrors,
+    constraintRunErrors,
+    errorLogs,
+    modelErrors,
+    resetErrorStores,
     schedulingErrors,
     simulationDatasetErrors,
   } from '../../../stores/errors';
@@ -125,7 +136,7 @@
     viewTogglePanel,
     viewUpdateGrid,
   } from '../../../stores/views';
-  import type { ActivityErrorCounts } from '../../../types/errors';
+  import type { ActivityErrorCounts, LogLevel } from '../../../types/errors';
   import type { Extension } from '../../../types/extension';
   import type { PlanSnapshot } from '../../../types/plan-snapshot';
   import type { View, ViewSaveEvent, ViewToggleEvent } from '../../../types/view';
@@ -133,7 +144,6 @@
   import effects from '../../../utilities/effects';
   import { isSaveEvent } from '../../../utilities/keyboardEvents';
   import { closeActiveModal } from '../../../utilities/modal';
-  import { getModelStatusRollup } from '../../../utilities/model';
   import { featurePermissions } from '../../../utilities/permissions';
   import {
     formatSimulationQueuePosition,
@@ -155,7 +165,9 @@
 
   export let data: PageData;
 
-  type PlanConsoleTab = 'all' | 'anchor' | 'scheduling' | 'simulation' | 'activity' | 'model';
+  type PlanConsoleTab = 'all' | 'scheduling' | 'simulation' | 'activity' | 'model' | 'constraints' | 'logs';
+
+  const defaultLogLevels: LogLevel[] = ['error', 'warn', 'info'];
 
   let activityErrorCounts: ActivityErrorCounts = {
     all: 0,
@@ -168,7 +180,6 @@
     wrongType: 0,
   };
   let compactNavMode = false;
-  let errorConsole: Console;
   let constraintsStatusText: string | undefined;
   let hasCreateViewPermission: boolean = false;
   let hasUpdateViewPermission: boolean = false;
@@ -177,7 +188,6 @@
   let hasSimulatePermission: boolean = false;
   let hasCheckConstraintsPermission: boolean = false;
   let invalidActivityCount: number = 0;
-  let modelErrorCount: number = 0;
   let simulationExtent: string | null;
   let selectedSimulationStatus: Status | null;
   let windowWidth = 1600;
@@ -188,6 +198,33 @@
   let consolePaneApi: PaneAPI;
   let isConsoleExpanded: boolean = false;
   let selectedConsoleTab: PlanConsoleTab = 'all';
+  let logLevels: LogLevel[] = defaultLogLevels;
+  let logLevelLabel: string = 'Default levels';
+  let logLevelCounts: { error: number; info: number; warn: number } = { error: 0, info: 0, warn: 0 };
+
+  $: if (logLevels) {
+    if (logLevels.sort().toString() === defaultLogLevels.sort().toString()) {
+      logLevelLabel = 'Default levels';
+    } else if (logLevels.length === 1) {
+      logLevelLabel = `${capitalize(logLevels[0])} only`;
+    } else if (logLevels.length === 0) {
+      logLevelLabel = 'Hide all';
+    } else {
+      logLevelLabel = 'Custom levels';
+    }
+  }
+
+  $: if ($allLogs) {
+    logLevelCounts = $allLogs.reduce(
+      (counts, log) => {
+        if (log.level) {
+          counts[log.level]++;
+        }
+        return counts;
+      },
+      { error: 0, info: 0, warn: 0 },
+    );
+  }
 
   $: ({ invalidActivityCount, ...activityErrorCounts } = $activityErrorRollups.reduce(
     (prevCounts, activityErrorRollup) => {
@@ -450,19 +487,7 @@
       $resourceTypesLoading = false;
     });
   }
-  $: if ($plan) {
-    const { activityLogStatus, parameterLogStatus, resourceLogStatus } = getModelStatusRollup($plan.model);
-    modelErrorCount = 0;
-    if (activityLogStatus === 'error') {
-      modelErrorCount += 1;
-    }
-    if (parameterLogStatus === 'error') {
-      modelErrorCount += 1;
-    }
-    if (resourceLogStatus === 'error') {
-      modelErrorCount += 1;
-    }
-  }
+
   $: lastSimulationDatasetId =
     SEQUENCE_EXPANSION_MODE === SequencingMode.TEMPLATING
       ? $lastTemplatedSimulationDatasetId
@@ -477,6 +502,7 @@
     resetPlanStores();
     resetPlanSnapshotStores();
     resetSimulationStores();
+    resetErrorStores();
     closeActiveModal();
   });
 
@@ -486,9 +512,9 @@
     $simulationDatasetId = $simulationDatasetLatest?.id ?? -1;
   }
 
-  function onClearErrorsClick(selectedConsoleTab: PlanConsoleTab) {
-    if (selectedConsoleTab === 'all') {
-      clearAllErrors();
+  function onClearConsole() {
+    if (selectedConsoleTab === 'logs') {
+      clearLogs();
     } else if (selectedConsoleTab === 'scheduling') {
       clearSchedulingErrors();
     }
@@ -912,10 +938,10 @@
             on:restore={onRestoreSnapshot}
           />
         {/if}
-        {#if modelErrorCount}
+        {#if $modelErrors.length}
           <PlanModelErrorBar
             modelName={$plan?.model.name}
-            hasErrors={modelErrorCount > 0}
+            hasErrors={$modelErrors.length > 0}
             on:close={onCloseSnapshotPreview}
             on:viewModelErrors={() => {
               openConsoleTab('model');
@@ -943,73 +969,97 @@
       onCollapse={() => (isConsoleExpanded = false)}
       onExpand={() => (isConsoleExpanded = true)}
       bind:pane={consolePaneApi}
-      class="min-h-[28px]"
+      class="min-h-[36px]"
     >
       <div class="h-full min-h-6 overflow-hidden">
         <Console
-          bind:this={errorConsole}
           expanded={isConsoleExpanded}
           selectedTab={selectedConsoleTab}
           on:toggle={onConsoleToggle}
           on:selectTab={onSelectConsoleTab}
         >
           <svelte:fragment slot="console-actions">
-            {#if selectedConsoleTab === 'all' || selectedConsoleTab === 'scheduling'}
-              <div use:tooltip={{ content: 'Clear Errors', placement: 'top' }}>
-                <Button variant="ghost" size="icon" on:click={() => onClearErrorsClick(selectedConsoleTab)}>
-                  <ListX size={16} /></Button
-                >
+            {#if isConsoleExpanded && selectedConsoleTab === 'logs'}
+              <Select.Root
+                multiple
+                typeahead={false}
+                selected={logLevels.map(l => ({ label: capitalize(l), value: l }))}
+                onSelectedChange={values => {
+                  if (values) {
+                    logLevels = values.map(v => v.value);
+                  }
+                }}
+              >
+                <Select.Trigger size="xs" class="w-[120px] flex-shrink-0">{logLevelLabel}</Select.Trigger>
+                <Select.Content size="xs">
+                  <Select.Item size="xs" value="info" label="Info">
+                    Info <div class="ml-1 text-muted-foreground">({logLevelCounts.info})</div>
+                  </Select.Item>
+                  <Select.Item size="xs" value="warn" label="Warning">
+                    Warning <div class="ml-1 text-muted-foreground">({logLevelCounts.warn})</div>
+                  </Select.Item>
+                  <Select.Item size="xs" value="error" label="Error">
+                    Error <div class="ml-1 text-muted-foreground">({logLevelCounts.error})</div>
+                  </Select.Item>
+                </Select.Content>
+              </Select.Root>
+            {/if}
+            {#if (isConsoleExpanded && selectedConsoleTab === 'logs') || selectedConsoleTab === 'scheduling'}
+              <div use:tooltip={{ content: 'Clear', placement: 'top' }}>
+                <Button variant="ghost" size="icon" on:click={onClearConsole}>
+                  <ListX size={16} />
+                </Button>
               </div>
             {/if}
           </svelte:fragment>
           <svelte:fragment slot="console-tabs">
             <div class="console-tabs overflow-x-hidden">
               <div>
-                <ConsoleTab value="all" numberOfErrors={$allErrors?.length} title="All Errors">All Errors</ConsoleTab>
+                <ConsoleTab value="all" numberOfErrors={$allProblems.length}>All Problems</ConsoleTab>
               </div>
-              <div class="pointer-events-none mx-0 flex w-2 justify-center px-0 text-[8px] opacity-50">|</div>
-              <div class="flex py-0.5">
-                <ConsoleTab
-                  value="anchor"
-                  numberOfErrors={$anchorValidationErrors?.length}
-                  title="Anchor Validation Errors"
-                >
-                  Anchor Validation
-                </ConsoleTab>
-                <ConsoleTab value="scheduling" numberOfErrors={$schedulingErrors?.length} title="Scheduling Errors">
-                  Scheduling
-                </ConsoleTab>
-                <ConsoleTab
-                  value="simulation"
-                  numberOfErrors={$simulationDatasetErrors?.length}
-                  title="Simulation Errors"
-                >
-                  Simulation
-                </ConsoleTab>
-                <ConsoleTab
-                  value="activity"
-                  numberOfErrors={activityErrorCounts.all}
-                  title="Activity Validation Errors"
-                >
-                  Activity Validation
-                </ConsoleTab>
-                <ConsoleTab value="model" numberOfErrors={modelErrorCount} title="Mission Model Errors">
-                  Mission Model
+              <div class="flex items-center py-0.5">
+                <ConsoleTab value="scheduling" numberOfErrors={$schedulingErrors?.length}>Scheduling</ConsoleTab>
+                <ConsoleTab value="simulation" numberOfErrors={$simulationDatasetErrors?.length}>Simulation</ConsoleTab>
+                <ConsoleTab value="constraints" numberOfErrors={$constraintRunErrors?.length}>Constraints</ConsoleTab>
+                <ConsoleTab value="activity" numberOfErrors={activityErrorCounts.all}>Activity Validation</ConsoleTab>
+                <ConsoleTab value="model" numberOfErrors={$modelErrors.length}>Mission Model</ConsoleTab>
+                <div
+                  class="pointer-events-none mx-2 flex h-4 w-0 items-center justify-center border-r border-black border-opacity-20 px-0"
+                />
+                <ConsoleTab value="logs" numberOfErrors={$errorLogs.length}>
+                  Logs
+                  <svelte:fragment slot="badge">
+                    {#if $errorLogs.length}
+                      <span class="flex items-center gap-0.5 px-0.5">
+                        <AlertTriangle size={13} />
+                        {$errorLogs.length}
+                      </span>
+                    {/if}
+                  </svelte:fragment>
                 </ConsoleTab>
               </div>
             </div>
           </svelte:fragment>
 
-          <ConsoleGenericErrors value="all" errors={$allErrors} />
-          <ConsoleGenericErrors value="anchor" errors={$anchorValidationErrors} />
-          <ConsoleGenericErrors value="scheduling" errors={$schedulingErrors} />
-          <ConsoleGenericErrors value="simulation" errors={$simulationDatasetErrors} />
+          <ConsoleLogs value="all" showTimestamp={false} showLevel={false} logs={$allProblems} />
+          <ConsoleLogs value="scheduling" showTimestamp={false} logs={$schedulingErrors} />
+          <ConsoleLogs value="simulation" showTimestamp={false} logs={$simulationDatasetErrors} />
+          <ConsoleLogs value="constraints" showTimestamp={false} logs={$constraintRunErrors} />
           <ConsoleActivityErrors
             activityValidationErrorTotalRollup={activityErrorCounts}
             activityValidationErrorRollups={$activityErrorRollups}
             on:selectionChanged={onActivityValidationSelected}
           />
-          <ConsoleModelErrors model={$plan?.model} title="Mission Model Errors" />
+          <ConsoleLogs value="model" showTimestamp={false} showType={false} logs={$modelErrors} />
+          <ConsoleLogs
+            value="logs"
+            logs={$allLogs}
+            {logLevels}
+            emptyStateMessage="No logs"
+            noMatchingResultsMessage="No matching logs"
+            autoScroll
+            showType={false}
+          />
         </Console>
       </div>
     </Resizable.Pane>
