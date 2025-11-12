@@ -3,6 +3,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
+  import type { UserSequence } from '@nasa-jpl/aerie-sequence-languages';
   import { onMount } from 'svelte';
   import {
     actionDefinitions,
@@ -14,7 +15,6 @@
   import type { ActionDefinition, ActionRunSlim } from '../../../types/actions';
   import type { User } from '../../../types/app';
   import type { ArgumentsMap, FormParameter } from '../../../types/parameter';
-  import type { UserSequence } from '@nasa-jpl/aerie-sequence-languages';
   import type { Workspace } from '../../../types/workspace';
   import {
     getActionDefinitionForRun,
@@ -45,6 +45,7 @@
 
   let actionDefinitionsFilterText: string = '';
   let actionRunsFilterText: string = '';
+  let hasRunActionPermission: boolean = false;
   let isLoadingWorkspace: boolean = false;
   let selectedActionDefinitionId: number | null = null;
   let selectedActionDefinition: ActionDefinition | null = null;
@@ -64,6 +65,10 @@
     workspaceActionDefinitions = Object.values($actionDefinitionsByWorkspace[workspaceId] || {});
     workspaceActionRuns = $actionRunsByWorkspace[workspaceId] || [];
     getWorkspaceSequences(workspaceId);
+  }
+
+  $: if (workspace) {
+    hasRunActionPermission = featurePermissions.actionRun.canCreate(user, workspace);
   }
 
   $: selectedActionRuns = (workspaceActionRuns || []).filter(actionRun => {
@@ -152,9 +157,11 @@
   }
 
   async function runAction(action: ActionDefinition) {
-    const actionRunId = await effects.runAction(action, workspaceSequences, user);
-    if (typeof actionRunId === 'number') {
-      goto(getActionsUrl(base, workspaceId, actionRunId));
+    if (workspace) {
+      const actionRunId = await effects.runAction(action, workspace, workspaceSequences, user);
+      if (typeof actionRunId === 'number') {
+        goto(getActionsUrl(base, workspaceId, actionRunId));
+      }
     }
   }
 
@@ -244,7 +251,7 @@
                 class="st-button secondary"
                 on:click|stopPropagation={() => runAction(actionDefinition)}
                 use:permissionHandler={{
-                  hasPermission: featurePermissions.actionRun.canCreate(user),
+                  hasPermission: hasRunActionPermission,
                   permissionError: 'You do not have permission to run an action',
                 }}
               >
@@ -287,7 +294,7 @@
               <button
                 class="st-button primary"
                 use:permissionHandler={{
-                  hasPermission: featurePermissions.actionRun.canCreate(user),
+                  hasPermission: hasRunActionPermission,
                   permissionError: 'You do not have permission to run an action',
                 }}
                 on:click|stopPropagation={() => {
