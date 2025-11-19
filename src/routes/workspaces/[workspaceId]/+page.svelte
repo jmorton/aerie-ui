@@ -60,7 +60,11 @@
   import { featurePermissions } from '../../../utilities/permissions';
   import { getActionsUrl, getWorkspacesUrl } from '../../../utilities/routes';
   import { showFailureToast } from '../../../utilities/toast';
-  import { mapWorkspaceTreePaths, separateFilenameFromPath } from '../../../utilities/workspaces';
+  import {
+    flattenWorkspaceTreeWithPaths,
+    mapWorkspaceTreePaths,
+    separateFilenameFromPath,
+  } from '../../../utilities/workspaces';
   import type { PageData } from './$types';
   // codemirror dependencies to be injected into the adaptation
   import * as cmCommands from '@codemirror/commands';
@@ -87,6 +91,7 @@
   let workspaceSequences: UserSequence[] = [];
   let workspaceTree: WorkspaceTreeNode | null = null;
   let workspaceTreeMap: WorkspaceTreeMap = {};
+  let workspaceFileList: WorkspaceTreeNodeWithFullPath[] = [];
   let hasEditFilePermission: boolean = false;
   let hasEditWorkspacePermission: boolean = false;
   let hasEditWorkspaceCollaboratorsPermission: boolean = false;
@@ -198,6 +203,7 @@
         };
       }
       workspaceTreeMap = mapWorkspaceTreePaths(workspaceTree?.contents ?? []);
+      workspaceFileList = flattenWorkspaceTreeWithPaths(workspaceContents ?? []);
 
       const librarySequencesEnabled = env.PUBLIC_LIBRARY_SEQUENCES_ENABLED === 'true';
       workspaceSequences = await effects.getWorkspaceSequences(
@@ -526,7 +532,7 @@
     }
 
     if ($workspace) {
-      const actionRunId = await effects.runAction(action, $workspace, workspaceSequences, user, parameters);
+      const actionRunId = await effects.runAction(action, $workspace, workspaceFileList, user, parameters);
       if (actionRunId !== null) {
         const goToRun = await effects.confirmOpenActionRunResults(actionRunId);
         if (goToRun === true) {
