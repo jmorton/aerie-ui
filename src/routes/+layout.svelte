@@ -2,12 +2,14 @@
 
 <script lang="ts">
   import { env } from '$env/dynamic/public';
+  import { cookieStoreListener } from '$lib/stores/oidc';
   import { ModeWatcher } from '@nasa-jpl/stellar-svelte';
   import WarningIcon from '@nasa-jpl/stellar/icons/warning.svg?component';
   import { mergeWith } from 'lodash-es';
   import { onMount } from 'svelte';
   import Nav from '../components/app/Nav.svelte';
   import Loading from '../components/Loading.svelte';
+  import { gqlWsClient } from '../lib/stores/auth';
   import { plugins, pluginsError, pluginsLoaded } from '../stores/plugins';
   import { loadPluginCode } from '../utilities/plugins';
 
@@ -15,9 +17,26 @@
   $pluginsLoaded = pluginsEnabled ? false : true;
 
   onMount(() => {
+    let unsubscribe = () => {};
+    if (env.PUBLIC_AUTH_OIDC_ENABLED === 'true') {
+      unsubscribe = cookieStoreListener();
+    }
+
     if (pluginsEnabled && !$pluginsLoaded) {
       loadPlugins();
     }
+
+    return () => {
+      unsubscribe();
+      console.log('Unsubscribed from cookie store changes.');
+
+      // dispose of the client on dismount
+      gqlWsClient.update(client => {
+        client?.dispose();
+        return client;
+      });
+      console.log('Disposed of graphql-ws client.');
+    };
   });
 
   async function loadPlugins() {

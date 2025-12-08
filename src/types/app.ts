@@ -18,6 +18,7 @@ export type User = BaseUser & {
 };
 
 export type ParsedUserToken = {
+  email: string;
   exp: number;
   'https://hasura.io/jwt/claims': {
     'x-hasura-allowed-roles': UserRole[];
@@ -25,7 +26,8 @@ export type ParsedUserToken = {
     'x-hasura-user-id': string;
   };
   iat: number;
-  username: string;
+  oid: string;
+  sub: string;
 };
 
 export type Version = {

@@ -32,6 +32,7 @@
   import { SearchParameters } from '../../../enums/searchParameters';
   import { SequencingMode } from '../../../enums/sequencing';
   import { Status } from '../../../enums/status';
+  import { userStore } from '../../../lib/stores/auth';
   import {
     activityArgumentDefaults,
     activityArgumentDefaultsModelId,
@@ -233,18 +234,18 @@
       wrongType: 0,
     },
   ));
-  $: hasCreateViewPermission = featurePermissions.view.canCreate(data.user);
-  $: hasUpdateViewPermission = $view !== null ? featurePermissions.view.canUpdate(data.user, $view) : false;
+  $: hasCreateViewPermission = featurePermissions.view.canCreate($userStore);
+  $: hasUpdateViewPermission = $view !== null ? featurePermissions.view.canUpdate($userStore, $view) : false;
   $: if ($initialPlan) {
     hasCheckConstraintsPermission =
-      featurePermissions.constraintRuns.canCreate(data.user, $initialPlan, $initialPlan.model) && !$planReadOnly;
+      featurePermissions.constraintRuns.canCreate($userStore, $initialPlan, $initialPlan.model) && !$planReadOnly;
     hasExpandPermission =
-      featurePermissions.expansionSequences.canExpand(data.user, $initialPlan, $initialPlan.model) && !$planReadOnly;
+      featurePermissions.expansionSequences.canExpand($userStore, $initialPlan, $initialPlan.model) && !$planReadOnly;
     hasScheduleAnalysisPermission =
-      featurePermissions.schedulingGoalsPlanSpec.canAnalyze(data.user, $initialPlan, $initialPlan.model) &&
+      featurePermissions.schedulingGoalsPlanSpec.canAnalyze($userStore, $initialPlan, $initialPlan.model) &&
       !$planReadOnly;
     hasSimulatePermission =
-      featurePermissions.simulation.canRun(data.user, $initialPlan, $initialPlan.model) && !$planReadOnly;
+      featurePermissions.simulation.canRun($userStore, $initialPlan, $initialPlan.model) && !$planReadOnly;
   }
   $: if (data.initialPlan) {
     $initialPlan = data.initialPlan;
@@ -306,7 +307,7 @@
         .getDefaultActivityArguments(
           $planModelId,
           $planModelActivityTypes.map(type => type.name),
-          data.user,
+          $userStore,
         )
         .then(argumentDefaults => {
           activityArgumentDefaults.set(argumentDefaults);
@@ -323,7 +324,7 @@
     $planReadOnlySnapshot = true;
   }
   $: if ($planSnapshot !== null) {
-    effects.getPlanSnapshotActivityDirectives($planSnapshot, data.user).then(directives => {
+    effects.getPlanSnapshotActivityDirectives($planSnapshot, $userStore).then(directives => {
       if (directives !== null) {
         $planSnapshotActivityDirectives = directives;
       }
@@ -366,7 +367,7 @@
         $initialPlan.id,
         $simulationDatasetId > -1 ? $simulationDatasetId : null,
         $initialPlan.start_time,
-        data.user,
+        $userStore,
         resourcesExternalAbortController.signal,
       )
       .then(({ aborted, resources }) => {
@@ -391,7 +392,7 @@
       .getSpans(
         datasetId,
         $simulationDataset.simulation_start_time ?? $initialPlan.start_time,
-        data.user,
+        $userStore,
         simulationDataAbortController.signal,
       )
       .then(newSpans => {
@@ -399,7 +400,7 @@
         $initialSpansLoading = false;
       });
     effects
-      .getEvents(datasetId, data.user, simulationDataAbortController.signal)
+      .getEvents(datasetId, $userStore, simulationDataAbortController.signal)
       .then(newEvents => ($simulationEvents = newEvents));
   } else {
     simulationDataAbortController?.abort();
@@ -445,7 +446,7 @@
   $: if (typeof $planModelId === 'number' && browser) {
     // Asynchronously fetch resource types
     $resourceTypesLoading = true;
-    effects.getResourceTypes($planModelId, data.user).then(initialResourceTypes => {
+    effects.getResourceTypes($planModelId, $userStore).then(initialResourceTypes => {
       $resourceTypes = initialResourceTypes;
       $resourceTypesLoading = false;
     });
@@ -503,7 +504,7 @@
   function onKeydown(event: KeyboardEvent): void {
     if (isSaveEvent(event)) {
       event.preventDefault();
-      effects.simulate($plan, false, data.user);
+      effects.simulate($plan, false, $userStore);
     }
   }
 
@@ -515,7 +516,7 @@
     const { detail } = event;
     const { definition } = detail;
     if (definition && hasCreateViewPermission) {
-      const success = await effects.createView(definition, data.user);
+      const success = await effects.createView(definition, $userStore);
       if (success) {
         resetOriginalView();
       }
@@ -525,7 +526,7 @@
   async function onEditView(event: CustomEvent<View>) {
     const { detail: updatedView } = event;
     if (updatedView && hasUpdateViewPermission) {
-      const success = await effects.editView(updatedView, data.user);
+      const success = await effects.editView(updatedView, $userStore);
       if (success) {
         resetOriginalView();
       }
@@ -535,11 +536,11 @@
   async function onHandleExpansion() {
     if (SEQUENCE_EXPANSION_MODE === SequencingMode.TYPESCRIPT) {
       if ($selectedExpansionSetId != null && $plan) {
-        effects.expand($selectedExpansionSetId, $simulationDatasetLatest?.id || -1, $plan, data.user);
+        effects.expand($selectedExpansionSetId, $simulationDatasetLatest?.id || -1, $plan, $userStore);
       }
     } else if (SEQUENCE_EXPANSION_MODE === SequencingMode.TEMPLATING) {
       if ($selectedSequence !== null && $plan !== null && $simulationDatasetLatest !== null) {
-        effects.expandTemplates([$selectedSequence], $simulationDatasetLatest.dataset_id, $plan, data.user);
+        effects.expandTemplates([$selectedSequence], $simulationDatasetLatest.dataset_id, $plan, $userStore);
       }
     }
   }
@@ -547,7 +548,7 @@
   async function onRestoreSnapshot(event: CustomEvent<PlanSnapshot>) {
     const { detail: snapshotToRestore } = event;
     if ($plan) {
-      const success = await effects.restorePlanSnapshot(snapshotToRestore, $plan, data.user);
+      const success = await effects.restorePlanSnapshot(snapshotToRestore, $plan, $userStore);
 
       if (success) {
         clearSnapshot();
@@ -563,14 +564,14 @@
       url: event.detail.url,
     };
 
-    effects.callExtension(event.detail, payload, data.user);
+    effects.callExtension(event.detail, payload, $userStore);
   }
 
   async function onSaveView(event: CustomEvent<ViewSaveEvent>) {
     const { detail } = event;
     const { definition, id, name, owner } = detail;
     if (id != null && hasUpdateViewPermission) {
-      const success = await effects.updateView(id, { definition, name, owner }, null, data.user);
+      const success = await effects.updateView(id, { definition, name, owner }, null, $userStore);
       if (success) {
         resetOriginalView();
       }
@@ -595,7 +596,7 @@
 
   async function onUploadView() {
     if (hasCreateViewPermission) {
-      const success = await effects.uploadView(data.user);
+      const success = await effects.uploadView($userStore);
       if (success) {
         resetOriginalView();
       }
@@ -663,10 +664,10 @@
   <Resizable.PaneGroup direction="vertical" autoSaveId="console">
     <Resizable.Pane>
       <div class="plan-content">
-        <Nav user={data.user}>
+        <Nav user={$userStore}>
           <div class="title" slot="title">
             {#if $plan}
-              <PlanMenu plan={$plan} user={data.user} />
+              <PlanMenu plan={$plan} user={$userStore} />
             {/if}
 
             {#if $planReadOnlyMergeRequest || data.initialPlan.parent_plan?.is_locked}
@@ -684,7 +685,7 @@
             {/if}
           </div>
           <svelte:fragment slot="left">
-            <PlanMergeRequestsStatusButton user={data.user} />
+            <PlanMergeRequestsStatusButton user={$userStore} />
           </svelte:fragment>
           <svelte:fragment slot="right">
             <ActivityStatusMenu
@@ -740,7 +741,7 @@
               progress={$simulationProgress}
               disabled={!$enableSimulation}
               showStatusInMenu={false}
-              on:click={() => effects.simulate($plan, false, data.user)}
+              on:click={() => effects.simulate($plan, false, $userStore)}
             >
               <PlaySquareIcon size={20} />
               <svelte:fragment slot="metadata">
@@ -783,7 +784,7 @@
                 {/if}
                 {#if selectedSimulationStatus === Status.Pending || selectedSimulationStatus === Status.Incomplete}
                   <button
-                    on:click={() => effects.cancelSimulation($simulationDatasetId, data.user)}
+                    on:click={() => effects.cancelSimulation($simulationDatasetId, $userStore)}
                     class="st-button danger"
                     disabled={$planReadOnly}>Cancel</button
                   >
@@ -803,7 +804,7 @@
                 : 'You do not have permission to run a constraint check'}
               status={$constraintsStatus !== Status.Failed ? $cachedConstraintsStatus : $constraintsStatus}
               showStatusInMenu={false}
-              on:click={() => $plan && effects.checkConstraints($plan, data.user, false)}
+              on:click={() => $plan && effects.checkConstraints($plan, $userStore, false)}
               indeterminate
             >
               <FlipHorizontal2 size={20} />
@@ -865,7 +866,7 @@
                 : 'You do not have permission to run a scheduling analysis'}
               status={$schedulingAnalysisStatus}
               statusText={schedulingStatusText}
-              on:click={() => effects.schedule(true, $plan, data.user)}
+              on:click={() => effects.schedule(true, $plan, $userStore)}
               indeterminate
             >
               <CalendarRange size={20} />
@@ -877,7 +878,7 @@
                 </div>
                 {#if $schedulingAnalysisStatus === Status.Pending || $schedulingAnalysisStatus === Status.Incomplete}
                   <button
-                    on:click={() => effects.cancelSchedulingRequest($latestSchedulingRequest.analysis_id, data.user)}
+                    on:click={() => effects.cancelSchedulingRequest($latestSchedulingRequest.analysis_id, $userStore)}
                     class="st-button cancel-button"
                     disabled={$planReadOnly}>Cancel</button
                   >
@@ -887,13 +888,13 @@
             <ExtensionMenu
               extensions={$extensions}
               title={!compactNavMode ? 'Extensions' : ''}
-              user={data.user}
+              user={$userStore}
               on:callExtension={onCallExtension}
             />
             <ViewMenu
               hasCreatePermission={hasCreateViewPermission}
               hasUpdatePermission={hasUpdateViewPermission}
-              user={data.user}
+              user={$userStore}
               on:createView={onCreateView}
               on:editView={onEditView}
               on:saveView={onSaveView}
@@ -924,7 +925,7 @@
         {/if}
         <PlanGrid
           {...$view?.definition.plan.grid}
-          user={data.user}
+          user={$userStore}
           on:changeColumnSizes={onChangeColumnSizes}
           on:changeLeftRowSizes={onChangeLeftRowSizes}
           on:changeMiddleRowSizes={onChangeMiddleRowSizes}

@@ -41,7 +41,6 @@
     gql.SUB_ACTION_RUN,
     { actionRunId: initialActionRun?.id },
     initialActionRun,
-    user,
   );
 
   async function getUserSequenceOptions(idOfWorkspace: number): Promise<void> {

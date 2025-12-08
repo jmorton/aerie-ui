@@ -6,6 +6,7 @@
   import PhoenixIcon from '../../../../../../assets/aerie-phoenix-logo.svg?component';
   import Nav from '../../../../../../components/app/Nav.svelte';
   import CssGrid from '../../../../../../components/ui/CssGrid.svelte';
+  import { userStore } from '../../../../../../lib/stores/auth';
   import type { ActionRun } from '../../../../../../types/actions';
   import type { Workspace } from '../../../../../../types/workspace';
   import { getActionsUrl, getWorkspacesUrl } from '../../../../../../utilities/routes';
@@ -18,7 +19,7 @@
 </script>
 
 <CssGrid rows="var(--nav-header-height) calc(100vh - var(--nav-header-height))">
-  <Nav user={data.user}>
+  <Nav user={$userStore}>
     <div class="workspace-title" slot="title">
       <a class="app-icon link flex flex-nowrap" href={getWorkspacesUrl(base)}>
         <PhoenixIcon height={16} />Sequence Workspaces
