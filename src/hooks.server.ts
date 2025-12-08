@@ -1,22 +1,73 @@
 import { base } from '$app/paths';
 import { env } from '$env/dynamic/public';
-import type { Handle } from '@sveltejs/kit';
+import * as auth from '$lib/server/oidc';
+import { error, type Handle } from '@sveltejs/kit';
 import { parse, type CookieSerializeOptions } from 'cookie';
-import { jwtDecode } from 'jwt-decode';
-import type { BaseUser, ParsedUserToken, User } from './types/app';
+import type { BaseUser } from './types/app';
 import type { ReqValidateSSOResponse } from './types/auth';
-import effects from './utilities/effects';
+import { computeRolesFromCookies, computeRolesFromJWT } from './utilities/auth';
 import { reqGatewayForwardCookies } from './utilities/requests';
 
 export const handle: Handle = async ({ event, resolve }) => {
+  if (event.url.pathname.includes('com.chrome.devtools')) {
+    return new Response(null, { status: 204 });
+  }
+  if (event.url.pathname.includes('error') || event.url.pathname.includes('oidc')) {
+    // don't want hooks running on an error page
+    return await resolve(event);
+  }
+  if (
+    env.PUBLIC_AUTH_OIDC_ENABLED === 'true' &&
+    !event.url.pathname.includes('changeRole') &&
+    event.url.pathname.includes('auth')
+  ) {
+    error(
+      500,
+      `Attempting to access /auth endpoint "${event.url.pathname}" while OIDC enabled (env.PUBLIC_AUTH_OIDC_ENABLED='true').`,
+    );
+  }
+
   try {
-    if (env.PUBLIC_AUTH_SSO_ENABLED === 'true') {
+    if (env.PUBLIC_AUTH_OIDC_ENABLED === 'true') {
+      return await handleOIDCAuth({ event, resolve });
+    } else if (env.PUBLIC_AUTH_SSO_ENABLED === 'true') {
       return await handleSSOAuth({ event, resolve });
     } else {
       return await handleJWTAuth({ event, resolve });
     }
   } catch (e) {
-    console.log(e);
+    event.locals.user = null;
+  }
+
+  return await resolve(event);
+};
+
+/**
+ * Sets local user to the decoded access token enriched with additional
+ * fine-grained query-related permissions.
+ */
+const handleOIDCAuth: Handle = async ({ event, resolve }) => {
+  event = await auth.handler(event);
+
+  // the above handler doesn't impact the event.request.headers, but it does
+  // impact the cookies object. we only gain information by using that...
+  // so let's use it!
+  const activeRole = event.cookies.get('activeRole') ?? null;
+  const token = event.cookies.get('accessToken');
+
+  if (token) {
+    const user: BaseUser = { id: null, token };
+    event.locals.user = await computeRolesFromJWT(user, activeRole);
+
+    // If the active role cookie is not in the list of allowed roles, then set
+    // it to the user's default role.
+    if (event.locals.user && !event.locals.user.allowedRoles.includes(activeRole || '')) {
+      event.cookies.set('activeRole', event.locals.user.defaultRole, {
+        httpOnly: false,
+        path: `${base}/`,
+      });
+    }
+  } else {
     event.locals.user = null;
   }
 
@@ -44,11 +95,11 @@ const handleJWTAuth: Handle = async ({ event, resolve }) => {
   return event.url.pathname.includes('/login') || event.url.pathname.includes('/auth')
     ? await resolve(event)
     : new Response(null, {
-        headers: {
-          location: `${base}/login`,
-        },
-        status: 307,
-      });
+      headers: {
+        location: `${base}/login`,
+      },
+      status: 307,
+    });
 };
 
 const handleSSOAuth: Handle = async ({ event, resolve }) => {
@@ -82,20 +133,13 @@ const handleSSOAuth: Handle = async ({ event, resolve }) => {
 
   const roles = await computeRolesFromJWT(user, activeRoleCookie);
 
+  // create and set activeRole cookie
   if (roles) {
-    // create and set cookies
-    const userStr = JSON.stringify(user);
-    const userCookie = Buffer.from(userStr).toString('base64');
     const cookieOpts: CookieSerializeOptions & { path: string } = {
       httpOnly: false,
       path: `${base}/`,
       sameSite: 'none',
     };
-
-    // if logout just cleared user cookie, don't re-set it
-    if (!event.url.pathname.includes('/auth/logout')) {
-      event.cookies.set('user', userCookie, cookieOpts);
-    }
 
     // don't overwrite existing activeRole, unless it doesn't exist anymore
     if (!activeRoleCookie || activeRoleCookie === 'deleted' || !roles.allowedRoles.includes(activeRoleCookie)) {
@@ -107,46 +151,3 @@ const handleSSOAuth: Handle = async ({ event, resolve }) => {
 
   return await resolve(event);
 };
-
-async function computeRolesFromCookies(
-  userCookie: string | null,
-  activeRoleCookie: string | null,
-): Promise<User | null> {
-  const userBuffer = Buffer.from(userCookie ?? '', 'base64');
-  const userStr = userBuffer.toString('utf-8');
-
-  try {
-    const baseUser: BaseUser = JSON.parse(userStr);
-    return computeRolesFromJWT(baseUser, activeRoleCookie);
-  } catch {
-    return null;
-  }
-}
-
-async function computeRolesFromJWT(baseUser: BaseUser, activeRole: string | null): Promise<User | null> {
-  const { success } = await effects.session(baseUser);
-  if (!success) {
-    return null;
-  }
-
-  const decodedToken: ParsedUserToken = jwtDecode(baseUser.token);
-
-  const allowedRoles = decodedToken['https://hasura.io/jwt/claims']['x-hasura-allowed-roles'];
-  const defaultRole = decodedToken['https://hasura.io/jwt/claims']['x-hasura-default-role'];
-
-  const user: User = {
-    ...baseUser,
-    activeRole: activeRole ?? defaultRole,
-    allowedRoles,
-    defaultRole,
-    permissibleQueries: null,
-    rolePermissions: null,
-  };
-  const permissibleQueries = await effects.getUserQueries(user);
-  const rolePermissions = await effects.getRolePermissions(user);
-  return {
-    ...user,
-    permissibleQueries,
-    rolePermissions,
-  };
-}
