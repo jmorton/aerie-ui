@@ -6,7 +6,7 @@ import type { ChangeUserRoleRequestBody } from '../../../types/auth';
 export const POST: RequestHandler = async event => {
   const body: ChangeUserRoleRequestBody = await event.request.json();
   const { role } = body;
-  event.cookies.set('activeRole', role, { httpOnly: false, path: '/', secure: !dev });
+  event.cookies.set('activeRole', role, { httpOnly: false, path: '/', sameSite: 'lax', secure: !dev });
 
   return json({ success: true });
 };
